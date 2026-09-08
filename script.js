@@ -1,3 +1,4 @@
+// --- DOM-ELEMENTE ---
 const pupils = document.querySelectorAll('.pupil');
 const blob = document.getElementById('blob');
 const statusText = document.getElementById('status-text');
@@ -6,29 +7,23 @@ const downloadBtn = document.getElementById('download-brain-btn');
 const uploadBtn = document.getElementById('upload-brain-btn');
 const fileInput = document.getElementById('brain-file-input');
 
-// 1. FESTES GRUNDWISSEN (Grammatik, Wortarten & Satzmuster)
+// --- 1. LOCALES SPRACHWÖRTERBUCH (Feste Antworten für Grundbegriffe) ---
 const dictionary = {
-    // Begrüßungen
     greetings: ["hallo", "hi", "hey", "guten morgen", "guten tag", "guten abend", "servus", "moin"],
     greetingResponses: ["Hallo!", "Hey! Schön dich zu hören.", "Hi! Wie kann ich dir helfen?", "Moin!"],
 
-    // Befinden & Smalltalk
     wellbeing: ["wie gehts", "wie geht es dir", "alles klar", "wie läufts"],
     wellbeingResponses: ["Mir geht es super, danke der Nachfrage!", "Alles bestens bei mir!", "Ich bin voll geladen und bereit."],
 
-    // Identität
     identity: ["wer bist du", "wie heißt du", "was bist du"],
     identityResponses: ["Ich bin Omni, deine blaue digitale Assistentin.", "Mein Name ist Omni!"],
 
-    // Verabschiedung
     farewell: ["tschüss", "ciao", "auf wiedersehen", "bis später", "gute nacht"],
     farewellResponses: ["Tschüss! Bis zum nächsten Mal.", "Ciao! Sag Bescheid, wenn du mich brauchst.", "Bis später!"],
 
-    // Höflichkeit
     thanks: ["danke", "vielen dank", "dankeschön"],
     thanksResponses: ["Sehr gerne!", "Kein Problem!", "Jederzeit wieder!"],
 
-    // Sprachmuster für W-Fragen (Was ist X, Wer ist X, etc.)
     questionPatterns: [
         { trigger: "was ist", reply: "Das ist ein Begriff aus unserer Sprache." },
         { trigger: "wie funktioniert", reply: "Das hängt von den einzelnen Schritten und Abläufen ab." },
@@ -36,16 +31,15 @@ const dictionary = {
     ]
 };
 
-// 2. DYNAMISCHES GEDÄCHTNIS (Deine eigen beigebrachten Begriffe)
+// --- 2. DYNAMISCHES GEDÄCHTNIS (Gelerntes aus localStorage) ---
 let omniBrain = JSON.parse(localStorage.getItem('omni_memory')) || {};
-
 let waitingForDefinitionFor = null;
 
 function saveMemory() {
     localStorage.setItem('omni_memory', JSON.stringify(omniBrain));
 }
 
-// Pupillen-Steuerung
+// --- 3. PUPILLEN-STEUERUNG (Auge folgt Touch/Maus) ---
 window.addEventListener('mousemove', (e) => movePupils(e.clientX, e.clientY));
 window.addEventListener('touchmove', (e) => {
     if (e.touches.length > 0) movePupils(e.touches[0].clientX, e.touches[0].clientY);
@@ -65,7 +59,7 @@ function movePupils(mouseX, mouseY) {
     });
 }
 
-// Sprachausgabe
+// --- 4. SPRACHAUSGABE (Mit iOS / iPad Safari Fix) ---
 function speakOmni(text) {
     if (!('speechSynthesis' in window)) return;
 
@@ -76,9 +70,13 @@ function speakOmni(text) {
     utterance.rate = 0.95;  
     utterance.pitch = 1.05; 
 
-    const voices = window.speechSynthesis.getVoices();
-    const bestVoice = voices.find(v => v.lang.startsWith('de'));
-    if (bestVoice) utterance.voice = bestVoice;
+    let voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+        const germanVoice = voices.find(v => v.lang && (v.lang.startsWith('de') || v.lang.includes('DE')));
+        if (germanVoice) {
+            utterance.voice = germanVoice;
+        }
+    }
 
     utterance.onstart = () => {
         blob.classList.add('speaking');
@@ -90,16 +88,25 @@ function speakOmni(text) {
         statusText.innerText = "Omni wartet...";
     };
 
-    utterance.onerror = () => {
+    utterance.onerror = (e) => {
+        console.error("Audio-Fehler:", e);
         blob.classList.remove('speaking');
+        statusText.innerText = "Omni wartet...";
     };
 
-    window.speechSynthesis.speak(utterance);
+    // Minimaler Timeout löst die Audio-Sperre in Safari / iOS auf
+    setTimeout(() => {
+        window.speechSynthesis.speak(utterance);
+    }, 50);
 }
 
-window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+if ('speechSynthesis' in window) {
+    window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+    };
+}
 
-// Spracherkennung
+// --- 5. SPRACHERKENNUNG (Mikrofon) ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 
@@ -144,11 +151,11 @@ talkBtn.addEventListener('click', () => {
     }
 });
 
-// --- INTELLIGENTE VERARBEITUNG OHNE KI ---
+// --- 6. LOGIK & BEANTWORTUNG ---
 function processUserInput(text) {
     const input = text.toLowerCase().trim();
 
-    // 1. Wenn ein Wort neu angelernt wird
+    // 1. Wenn Omni gerade eine Erklärung lernt
     if (waitingForDefinitionFor) {
         omniBrain[waitingForDefinitionFor] = text;
         saveMemory();
@@ -158,52 +165,45 @@ function processUserInput(text) {
         return;
     }
 
-    // 2. Befehl zum gezielten Anlernen (z. B. "Lerne: Haus bedeutet Gebäude")
+    // 2. Gezielter Lern-Befehl
     if (input.startsWith("lerne") || input.startsWith("bring mir bei")) {
         waitingForDefinitionFor = input.replace("lerne", "").replace("bring mir bei", "").trim();
         speakOmni(`Alles klar. Was bedeutet '${waitingForDefinitionFor}'?`);
         return;
     }
 
-    // 3. Erstes Prüfen: Spezifisch gelerntes Wissen aus omniBrain
+    // 3. Exakt gelerntes Wissen
     if (omniBrain[input]) {
         speakOmni(omniBrain[input]);
         return;
     }
 
-    // 4. Zweites Prüfen: Integriertes Sprachwörterbuch (Grammatik & Satzmuster)
-    
-    // Begrüßung?
+    // 4. Integriertes Wörterbuch
     if (dictionary.greetings.some(w => input.includes(w))) {
         speakOmni(getRandom(dictionary.greetingResponses));
         return;
     }
 
-    // Befinden?
     if (dictionary.wellbeing.some(w => input.includes(w))) {
         speakOmni(getRandom(dictionary.wellbeingResponses));
         return;
     }
 
-    // Identität?
     if (dictionary.identity.some(w => input.includes(w))) {
         speakOmni(getRandom(dictionary.identityResponses));
         return;
     }
 
-    // Verabschiedung?
     if (dictionary.farewell.some(w => input.includes(w))) {
         speakOmni(getRandom(dictionary.farewellResponses));
         return;
     }
 
-    // Danke?
     if (dictionary.thanks.some(w => input.includes(w))) {
         speakOmni(getRandom(dictionary.thanksResponses));
         return;
     }
 
-    // W-Fragen ermitteln
     for (let pattern of dictionary.questionPatterns) {
         if (input.includes(pattern.trigger)) {
             speakOmni(pattern.reply);
@@ -211,7 +211,7 @@ function processUserInput(text) {
         }
     }
 
-    // 5. Schlagwort-Prüfung im angelagerten Wissen
+    // 5. Teilbegriffe durchsuchen
     for (let key in omniBrain) {
         if (input.includes(key)) {
             speakOmni(omniBrain[key]);
@@ -219,15 +219,15 @@ function processUserInput(text) {
         }
     }
 
-    // 6. Angemessene Standard-Antwort (ohne nach Definitionen zu nerven)
-    speakOmni("Ich habe den Satz gehört, aber dieses Wort kenne ich noch nicht genau. Wenn du möchtest, sag 'Lerne' gefolgt vom Wort.");
+    // 6. Rückfall-Antwort
+    speakOmni("Ich habe dich gehört, kenne diesen Begriff aber noch nicht. Sag 'Lerne' und das Wort, um es mir beizubringen.");
 }
 
 function getRandom(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// Backup-Buttons
+// --- 7. GEDÄCHTNIS BACKUP (JSON Sichern & Laden) ---
 downloadBtn.addEventListener('click', () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(omniBrain, null, 2));
     const downloadAnchor = document.createElement('a');
