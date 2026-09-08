@@ -3,25 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice AI Blob</title>
+    <title>Omni - Lernende KI</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <div class="container">
-        <!-- Der weiße KI-Fleck -->
-        <div class="blob-container" id="blob">
-            <div class="eye left-eye">
+        <!-- Omni / Blob -->
+        <div id="blob" class="blob-container">
+            <div class="eye">
                 <div class="pupil"></div>
             </div>
-            <div class="eye right-eye">
+            <div class="eye">
                 <div class="pupil"></div>
             </div>
         </div>
 
-        <!-- Status & Button -->
-        <p id="status-text">Ich höre zu...</p>
-        <button id="talk-btn" class="btn">Sprechen</button>
+        <!-- Status & Interaktion -->
+        <div id="status-text">Klicke 'Aufwachen', um zu sprechen</div>
+        <button id="talk-btn" class="btn">Aufwachen</button>
+
+        <!-- Gedächtnis sichern / laden -->
+        <div class="memory-controls">
+            <button id="download-brain-btn" class="sub-btn">🧠 Wissen sichern</button>
+            <button id="upload-brain-btn" class="sub-btn">📥 Wissen laden</button>
+            <input type="file" id="brain-file-input" style="display: none;" accept=".json">
+        </div>
     </div>
 
     <script src="script.js"></script>
