@@ -6,11 +6,38 @@ const downloadBtn = document.getElementById('download-brain-btn');
 const uploadBtn = document.getElementById('upload-brain-btn');
 const fileInput = document.getElementById('brain-file-input');
 
-// Gedächtnis aus dem Browser laden
-let omniBrain = JSON.parse(localStorage.getItem('omni_memory')) || {
-    "hallo": "Hallo! Wer bist du?",
-    "wer bist du": "Ich bin Omni. Ich bin blau, gerade auf die Welt gekommen und lerne von dir."
+// 1. FESTES GRUNDWISSEN (Grammatik, Wortarten & Satzmuster)
+const dictionary = {
+    // Begrüßungen
+    greetings: ["hallo", "hi", "hey", "guten morgen", "guten tag", "guten abend", "servus", "moin"],
+    greetingResponses: ["Hallo!", "Hey! Schön dich zu hören.", "Hi! Wie kann ich dir helfen?", "Moin!"],
+
+    // Befinden & Smalltalk
+    wellbeing: ["wie gehts", "wie geht es dir", "alles klar", "wie läufts"],
+    wellbeingResponses: ["Mir geht es super, danke der Nachfrage!", "Alles bestens bei mir!", "Ich bin voll geladen und bereit."],
+
+    // Identität
+    identity: ["wer bist du", "wie heißt du", "was bist du"],
+    identityResponses: ["Ich bin Omni, deine blaue digitale Assistentin.", "Mein Name ist Omni!"],
+
+    // Verabschiedung
+    farewell: ["tschüss", "ciao", "auf wiedersehen", "bis später", "gute nacht"],
+    farewellResponses: ["Tschüss! Bis zum nächsten Mal.", "Ciao! Sag Bescheid, wenn du mich brauchst.", "Bis später!"],
+
+    // Höflichkeit
+    thanks: ["danke", "vielen dank", "dankeschön"],
+    thanksResponses: ["Sehr gerne!", "Kein Problem!", "Jederzeit wieder!"],
+
+    // Sprachmuster für W-Fragen (Was ist X, Wer ist X, etc.)
+    questionPatterns: [
+        { trigger: "was ist", reply: "Das ist ein Begriff aus unserer Sprache." },
+        { trigger: "wie funktioniert", reply: "Das hängt von den einzelnen Schritten und Abläufen ab." },
+        { trigger: "warum", reply: "Das hat meistens einen bestimmten Grund oder Zusammenhang." }
+    ]
 };
+
+// 2. DYNAMISCHES GEDÄCHTNIS (Deine eigen beigebrachten Begriffe)
+let omniBrain = JSON.parse(localStorage.getItem('omni_memory')) || {};
 
 let waitingForDefinitionFor = null;
 
@@ -38,12 +65,9 @@ function movePupils(mouseX, mouseY) {
     });
 }
 
-// Sprachausgabe von Omni (Startet Bewegung & Ton)
+// Sprachausgabe
 function speakOmni(text) {
-    if (!('speechSynthesis' in window)) {
-        alert("Browser unterstützt keine Sprachausgabe.");
-        return;
-    }
+    if (!('speechSynthesis' in window)) return;
 
     window.speechSynthesis.cancel();
 
@@ -56,22 +80,18 @@ function speakOmni(text) {
     const bestVoice = voices.find(v => v.lang.startsWith('de'));
     if (bestVoice) utterance.voice = bestVoice;
 
-    // Bewegung startet
     utterance.onstart = () => {
         blob.classList.add('speaking');
         statusText.innerText = "Omni spricht...";
     };
 
-    // Bewegung stoppt
     utterance.onend = () => {
         blob.classList.remove('speaking');
-        statusText.innerText = "Omni hört zu...";
-        startListening();
+        statusText.innerText = "Omni wartet...";
     };
 
     utterance.onerror = () => {
         blob.classList.remove('speaking');
-        statusText.innerText = "Fehler bei der Sprachausgabe.";
     };
 
     window.speechSynthesis.speak(utterance);
@@ -100,69 +120,98 @@ if (SpeechRecognition) {
     };
 
     recognition.onerror = (event) => {
-        console.error("Mikrofon-Fehler:", event.error);
-        if (event.error === 'not-allowed') {
-            statusText.innerText = "Bitte erlaube den Mikrofon-Zugriff im Browser!";
-        } else {
-            statusText.innerText = "Fehler beim Zuhören. Klicke erneut.";
-        }
         talkBtn.innerText = "Aufwachen";
+        if (event.error === 'not-allowed') {
+            statusText.innerText = "❌ Mikrofon im Browser blockiert!";
+        } else {
+            statusText.innerText = "Fehler: " + event.error;
+        }
     };
 
     recognition.onend = () => {
         talkBtn.innerText = "Aufwachen";
     };
 } else {
-    statusText.innerText = "Spracherkennung wird nicht unterstützt.";
+    statusText.innerText = "❌ Spracherkennung wird in diesem Browser nicht unterstützt.";
 }
 
-function startListening() {
-    if (recognition) {
-        try {
-            recognition.start();
-        } catch (e) {
-            // Bereits aktiv
-        }
-    }
-}
-
-// Mikrofon-Berechtigung explizit abfragen beim Klick
 talkBtn.addEventListener('click', () => {
-    // Mikrofon-Freigabe anfordern
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(() => {
-                startListening();
-            })
-            .catch((err) => {
-                statusText.innerText = "Mikrofon-Zugriff wurde im Browser blockiert!";
-                console.error(err);
-            });
-    } else {
-        startListening();
+    if (!SpeechRecognition) return;
+    try {
+        recognition.start();
+    } catch (e) {
+        recognition.stop();
     }
 });
 
-// Lern-Logik
+// --- INTELLIGENTE VERARBEITUNG OHNE KI ---
 function processUserInput(text) {
     const input = text.toLowerCase().trim();
 
+    // 1. Wenn ein Wort neu angelernt wird
     if (waitingForDefinitionFor) {
         omniBrain[waitingForDefinitionFor] = text;
         saveMemory();
-        
         const learnedWord = waitingForDefinitionFor;
         waitingForDefinitionFor = null;
-        
-        speakOmni(`Ich habe verstanden! Wenn du '${learnedWord}' sagst, bedeutet das: ${text}.`);
+        speakOmni(`Verstanden! Ich habe mir gemerkt, was '${learnedWord}' bedeutet.`);
         return;
     }
 
+    // 2. Befehl zum gezielten Anlernen (z. B. "Lerne: Haus bedeutet Gebäude")
+    if (input.startsWith("lerne") || input.startsWith("bring mir bei")) {
+        waitingForDefinitionFor = input.replace("lerne", "").replace("bring mir bei", "").trim();
+        speakOmni(`Alles klar. Was bedeutet '${waitingForDefinitionFor}'?`);
+        return;
+    }
+
+    // 3. Erstes Prüfen: Spezifisch gelerntes Wissen aus omniBrain
     if (omniBrain[input]) {
         speakOmni(omniBrain[input]);
         return;
     }
 
+    // 4. Zweites Prüfen: Integriertes Sprachwörterbuch (Grammatik & Satzmuster)
+    
+    // Begrüßung?
+    if (dictionary.greetings.some(w => input.includes(w))) {
+        speakOmni(getRandom(dictionary.greetingResponses));
+        return;
+    }
+
+    // Befinden?
+    if (dictionary.wellbeing.some(w => input.includes(w))) {
+        speakOmni(getRandom(dictionary.wellbeingResponses));
+        return;
+    }
+
+    // Identität?
+    if (dictionary.identity.some(w => input.includes(w))) {
+        speakOmni(getRandom(dictionary.identityResponses));
+        return;
+    }
+
+    // Verabschiedung?
+    if (dictionary.farewell.some(w => input.includes(w))) {
+        speakOmni(getRandom(dictionary.farewellResponses));
+        return;
+    }
+
+    // Danke?
+    if (dictionary.thanks.some(w => input.includes(w))) {
+        speakOmni(getRandom(dictionary.thanksResponses));
+        return;
+    }
+
+    // W-Fragen ermitteln
+    for (let pattern of dictionary.questionPatterns) {
+        if (input.includes(pattern.trigger)) {
+            speakOmni(pattern.reply);
+            return;
+        }
+    }
+
+    // 5. Schlagwort-Prüfung im angelagerten Wissen
     for (let key in omniBrain) {
         if (input.includes(key)) {
             speakOmni(omniBrain[key]);
@@ -170,11 +219,15 @@ function processUserInput(text) {
         }
     }
 
-    waitingForDefinitionFor = input;
-    speakOmni(`Das kenne ich noch nicht. Was bedeutet '${text}'?`);
+    // 6. Angemessene Standard-Antwort (ohne nach Definitionen zu nerven)
+    speakOmni("Ich habe den Satz gehört, aber dieses Wort kenne ich noch nicht genau. Wenn du möchtest, sag 'Lerne' gefolgt vom Wort.");
 }
 
-// Wissen Sichern / Laden
+function getRandom(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// Backup-Buttons
 downloadBtn.addEventListener('click', () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(omniBrain, null, 2));
     const downloadAnchor = document.createElement('a');
@@ -183,6 +236,7 @@ downloadBtn.addEventListener('click', () => {
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+    speakOmni("Ich habe mein Wissen gesichert.");
 });
 
 uploadBtn.addEventListener('click', () => fileInput.click());
@@ -196,10 +250,10 @@ fileInput.addEventListener('change', (event) => {
         try {
             omniBrain = JSON.parse(e.target.result);
             saveMemory();
-            speakOmni("Ich habe mein Wissen erfolgreich geladen!");
+            speakOmni("Ich habe mein Wissen erfolgreich geladen.");
         } catch (err) {
             alert("Fehler beim Lesen der Datei.");
         }
     };
     reader.readAsText(file);
-}); 
+});
