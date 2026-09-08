@@ -5,13 +5,13 @@
 }
 
 body {
-    background-color: #0f172a; /* Dunkler Hintergrund, damit der weiße Fleck heraussticht */
+    background-color: #000000; /* Komplett schwarzer Hintergrund */
     height: 100vh;
     display: flex;
     justify-content: center;
     align-items: center;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    color: white;
+    color: #ffffff;
     overflow: hidden;
 }
 
@@ -22,34 +22,33 @@ body {
     gap: 40px;
 }
 
-/* Der weiße Fleck (Organische Form mit border-radius) */
+/* Omni (Der weiße Fleck im Ruhezustand) */
 .blob-container {
     width: 220px;
     height: 220px;
     background: #ffffff;
-    box-shadow: 0 0 50px rgba(255, 255, 255, 0.4);
-    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    box-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
+    border-radius: 50%; /* Im Ruhezustand perfekt rund */
     display: flex;
     justify-content: center;
     align-items: center;
     gap: 30px;
     position: relative;
-    animation: morph 8s ease-in-out infinite, float 4s ease-in-out infinite;
-    transition: all 0.3s ease;
+    transition: all 0.4s ease;
 }
 
 /* Augen */
 .eye {
-    width: 28px;
-    height: 42px;
-    background-color: #0f172a;
+    width: 26px;
+    height: 40px;
+    background-color: #000000;
     border-radius: 50%;
     position: relative;
     display: flex;
     justify-content: center;
     align-items: center;
     overflow: hidden;
-    animation: blink 5s infinite;
+    animation: blink 4s infinite;
 }
 
 .pupil {
@@ -64,19 +63,20 @@ body {
 /* Status & Button */
 #status-text {
     font-size: 1.2rem;
-    color: #94a3b8;
+    color: #666666;
+    height: 30px;
 }
 
 .btn {
-    background: #38bdf8;
-    color: #0f172a;
+    background: #ffffff;
+    color: #000000;
     border: none;
     padding: 16px 36px;
     font-size: 1.1rem;
     font-weight: bold;
     border-radius: 30px;
     cursor: pointer;
-    box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);
+    box-shadow: 0 4px 20px rgba(255, 255, 255, 0.2);
     transition: transform 0.2s, background 0.2s;
 }
 
@@ -84,34 +84,32 @@ body {
     transform: scale(0.95);
 }
 
-/* ANIMATIONEN */
+/* ANIMATIONEN (Aktiviert nur beim Sprechen) */
 
-/* 1. Organisches Verformen des Flecks */
+/* Blinzeln läuft immer für den natürlichen Effekt */
+@keyframes blink {
+    0%, 90%, 100% { transform: scaleY(1); }
+    95%           { transform: scaleY(0.1); }
+}
+
+/* Omni bewegt und verformt sich NUR beim Sprechen */
+.blob-container.speaking {
+    animation: morph 2.5s ease-in-out infinite, float 2s ease-in-out infinite, pulse 0.6s ease-in-out infinite alternate;
+    box-shadow: 0 0 60px rgba(255, 255, 255, 0.8);
+}
+
 @keyframes morph {
     0%   { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
     50%  { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
     100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
 }
 
-/* 2. Sanftes Schweben */
 @keyframes float {
     0%, 100% { transform: translateY(0px); }
-    50%      { transform: translateY(-15px); }
+    50%      { transform: translateY(-10px); }
 }
 
-/* 3. Natürliches Blinzeln der Augen */
-@keyframes blink {
-    0%, 90%, 100% { transform: scaleY(1); }
-    95%           { transform: scaleY(0.1); }
-}
-
-/* Zusätzlicher Sprech-Zustand (über JS aktiviert) */
-.blob-container.speaking {
-    animation: morph 2s ease-in-out infinite, talk-pulse 0.5s ease-in-out infinite alternate;
-    box-shadow: 0 0 80px rgba(56, 189, 248, 0.8);
-}
-
-@keyframes talk-pulse {
+@keyframes pulse {
     from { transform: scale(1); }
-    to   { transform: scale(1.1); }
+    to   { transform: scale(1.08); }
 }
