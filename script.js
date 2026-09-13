@@ -1,233 +1,194 @@
-// --- CONFIGURATION ---
-const CLOUDFLARE_WORKER_URL = "https://omnireadwrite.leanderotternberg.workers.dev";
+// ==========================================
+// CONFIGURATION & WORKER URLS
+// ==========================================
+const WORKER_GEMINI_URL = "https://omni.leanderotternberg.workers.dev";
+const WORKER_GITHUB_URL = "https://omnireadwrite.leanderotternberg.workers.dev";
 
-// --- CENTRAL BRAIN OBJECT ---
+// Globaler Speicherzustand (Brain)
 let omniBrain = {
-    "Schule_und_Abschlüsse": {
-        "ZAP_Sekundarstufe_I": "Zentrale Prüfungen Klasse 10 in Mathematik, Deutsch und Englisch.",
-        "Abitur_Oberstufe": "Vorbereitung Sekundarstufe II. Leistungskurse & Grundkurse.",
-        "Physik": "Klassische Mechanik, Elektrodynamik, Optik, Quantenphysik.",
-        "Spanisch": "Grammatik, Vokabeln, Indirekte Objektpronomen, Mündliche Prüfungen.",
-        "Französisch": "Pronomen 'y' und 'en', Hörverstehen, Textanalyse, Präsentationen."
-    },
-    "Systeme_und_Hardware": {
-        "PC_Setup": "Dell OptiPlex 5040 Tower, Intel Core i5-6500, 16 GB RAM, GTX 1050 Ti, SSD.",
-        "Single_Board_Computer": "Raspberry Pi 1 Model B, Pi 2, Pi 3 B+, Raspberry Pi Pico, ESP32, ESP8266.",
-        "System_Monitoring": "Rainmeter (Glass-Design), HWiNFO64, AIDA64, Wallpaper Engine, Razer Synapse.",
-        "Netzwerk_und_Security": "Nmap Scanning, Cloudflare DNS-over-HTTPS, Swisscows, Pentesting-Basics."
-    },
-    "Entwicklung_und_Projekte": {
-        "Roblox_Studio": "Luau Scripting, UserInputService, ProximityPrompts, GUI-Entwicklung.",
-        "OFFCHAT": "LoRa ESP32-S3 Terminal, Off-Grid P2P Textübertragung, Solar, AES-256.",
-        "Drohne_Omni": "ArduPilot / Betaflight, MAVLink, Raspberry Pi 5 Edge-KI / Cloud-Anbindung.",
-        "Web_Development": "HTML5, CSS3 (Glassmorphism), JavaScript, Dark Mode, Multilingual Support."
-    },
-    "Protokolle_und_Notizen": {}
+  history: [],
+  notes: [],
+  lastUpdated: new Date().toISOString()
 };
 
-// --- AUTOMATISCHES GITHUB-UPDATE ÜBER CLOUDFLARE ---
-async function saveToGitHub() {
-    try {
-        const response = await fetch(CLOUDFLARE_WORKER_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                action: "saveToGitHub",
-                brainData: omniBrain
-            })
-        });
-        const resData = await response.json();
-        if (resData.success) {
-            console.log("Omni Brain erfolgreich auf GitHub aktualisiert!");
-        } else {
-            console.error("Fehler beim Speichern:", resData);
-        }
-    } catch (err) {
-        console.error("Fehler beim Auto-Save auf GitHub:", err);
-    }
-}
+// ==========================================
+// DOM ELEMENTE & STATE
+// ==========================================
+const statusText = document.getElementById("status");
+const startBtn = document.getElementById("start-btn");
 
-// --- CATEGORY INDEX ---
-function getCategoriesSummary() {
-    let summary = [];
-    for (let cat in omniBrain) {
-        summary.push(`${cat}: [${Object.keys(omniBrain[cat]).join(", ")}]`);
-    }
-    return summary.join(" | ");
-}
-
-// --- DOM ELEMENTS ---
-const pupils = document.querySelectorAll('.pupil');
-const blob = document.getElementById('blob');
-const statusText = document.getElementById('status-text');
-const talkBtn = document.getElementById('talk-btn');
-
-// --- PUPILLEN STEUERUNG ---
-window.addEventListener('mousemove', (e) => movePupils(e.clientX, e.clientY));
-window.addEventListener('touchmove', (e) => {
-    if (e.touches.length > 0) movePupils(e.touches[0].clientX, e.touches[0].clientY);
-});
-
-function movePupils(mouseX, mouseY) {
-    if (!pupils.length) return;
-    pupils.forEach(pupil => {
-        const eye = pupil.parentElement;
-        const rect = eye.getBoundingClientRect();
-        const eyeX = rect.left + rect.width / 2;
-        const eyeY = rect.top + rect.height / 2;
-        
-        const angle = Math.atan2(mouseY - eyeY, mouseX - eyeX);
-        const distance = Math.min(6, Math.hypot(mouseX - eyeX, mouseY - eyeY) / 15);
-        
-        pupil.style.transform = `translate(${Math.cos(angle) * distance}px, ${Math.sin(angle) * distance}px)`;
-    });
-}
-
-let conversationHistory = [];
-
-// --- GEMINI API CALL ÜBER WORKER ---
-async function askGemini(userText) {
-    const kbOverview = getCategoriesSummary();
-    const fullKbData = JSON.stringify(omniBrain);
-
-    conversationHistory.push({ role: "user", parts: [{ text: userText }] });
-
-    const systemInstruction = `
-        Du bist Omni, eine direkte, extrem schlaue KI-Assistentin.
-        
-        DEIN OBERKATEGORIEN-INDEX (Schnellübersicht):
-        ${kbOverview}
-
-        DEINE DETAIL-DATENBANK:
-        ${fullKbData}
-
-        VERHALTENSREGELN:
-        - Antworte immer extrem präzise in 1 bis 2 kurzen Sätzen.
-        - Greife auf das Wissen über ZAP, Abitur, Hardware oder Projekte nur zu, wenn danach gefragt wird.
-        - Wenn der Nutzer ein Protokoll oder eine Notiz fordert, erstelle sie und füge am ENDE deiner Antwort folgendes JSON-Kommando an:
-          [[SAVE: {"kategorie": "Protokolle_und_Notizen", "thema": "Thema_Oder_Datum", "inhalt": "Kurzes Protokoll..."}]]
-    `;
-
-    const requestBody = {
-        contents: conversationHistory,
-        systemInstruction: { parts: [{ text: systemInstruction }] }
-    };
-
-    try {
-        const response = await fetch(CLOUDFLARE_WORKER_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                action: "askGemini",
-                payload: requestBody
-            })
-        });
-
-        if (!response.ok) throw new Error(`Server Fehler: ${response.status}`);
-
-        const data = await response.json();
-        let rawReply = data.candidates[0].content.parts[0].text.trim();
-
-        // Prüfe auf Speicher-Befehl
-        const saveMatch = rawReply.match(/\[\[SAVE:\s*(\{.*?\})\s*\]\]/s);
-        if (saveMatch) {
-            try {
-                const saveData = JSON.parse(saveMatch[1]);
-                if (!omniBrain[saveData.kategorie]) {
-                    omniBrain[saveData.kategorie] = {};
-                }
-                omniBrain[saveData.kategorie][saveData.thema] = saveData.inhalt;
-                console.log("Neues Protokoll erfasst. Sende an GitHub...");
-                
-                saveToGitHub();
-
-                rawReply = rawReply.replace(/\[\[SAVE:.*?\]\]/s, "").trim();
-            } catch (e) {
-                console.error("Fehler beim Parsen des Protokolls:", e);
-            }
-        }
-
-        conversationHistory.push({ role: "model", parts: [{ text: rawReply }] });
-        
-        if (conversationHistory.length > 20) {
-            conversationHistory = conversationHistory.slice(-20);
-        }
-
-        return rawReply;
-
-    } catch (error) {
-        console.error("Gemini Fehler:", error);
-        return "Verbindung zum Server fehlgeschlagen.";
-    }
-}
-
-// --- TTS & STT LOGIK ---
-function speakOmni(text) {
-    if (statusText) statusText.innerText = "Omni: " + text;
-    if (!('speechSynthesis' in window)) return;
-
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'de-DE';
-    utterance.rate = 1.0;
-
-    if (blob) utterance.onstart = () => blob.classList.add('speaking');
-    
-    const cleanup = () => {
-        if (blob) blob.classList.remove('speaking');
-        startContinuousListening();
-    };
-
-    utterance.onend = cleanup;
-    utterance.onerror = cleanup;
-
-    window.speechSynthesis.speak(utterance);
-}
-
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let isListening = false;
+let isSpeaking = false;
 
-if (SpeechRecognition) {
-    recognition = new SpeechRecognition();
-    recognition.lang = 'de-DE';
-    recognition.interimResults = false;
+// ==========================================
+// 1. BACKEND API ANFRAGEN
+// ==========================================
 
-    recognition.onstart = () => {
-        isListening = true;
-        if (statusText) statusText.innerText = "Omni hört zu...";
-        if (talkBtn) talkBtn.innerText = "Höre zu...";
-    };
+// Worker 1: KI-Antwort von Gemini abrufen
+async function askGemini(promptText) {
+  try {
+    const response = await fetch(WORKER_GEMINI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        payload: {
+          contents: [{ parts: [{ text: promptText }] }]
+        }
+      })
+    });
 
-    recognition.onresult = async (event) => {
-        const userText = event.results[0][0].transcript;
-        if (statusText) statusText.innerText = `Du: "${userText}"`;
-        
-        if (statusText) statusText.innerText = "Omni überlegt...";
-        const aiReply = await askGemini(userText);
-        speakOmni(aiReply);
-    };
-
-    recognition.onerror = () => { 
-        isListening = false; 
-        if (talkBtn) talkBtn.innerText = "Aufwachen";
-    };
-    
-    recognition.onend = () => {
-        isListening = false;
-        if (talkBtn) talkBtn.innerText = "Aufwachen";
-        if (blob && !blob.classList.contains('speaking')) startContinuousListening();
-    };
-} else {
-    if (statusText) statusText.innerText = "❌ Spracherkennung wird nicht unterstützt.";
-}
-
-function startContinuousListening() {
-    if (recognition && !isListening && blob && !blob.classList.contains('speaking')) {
-        try { recognition.start(); } catch (e) {}
+    if (!response.ok) {
+      throw new Error(`Worker HTTP Fehler: ${response.status}`);
     }
+
+    const data = await response.json();
+    const replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    return replyText || "Ich habe dazu leider keine Antwort erhalten.";
+  } catch (error) {
+    console.error("Fehler bei askGemini:", error);
+    return "Fehler bei der Verbindung zum KI-Worker.";
+  }
 }
 
-if (talkBtn) {
-    talkBtn.addEventListener('click', () => startContinuousListening());
+// Worker 2: Zustand in GitHub (omni_brain.json) speichern
+async function saveBrainToGitHub(brainData) {
+  try {
+    const response = await fetch(WORKER_GITHUB_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ brainData: brainData })
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      console.log("Brain erfolgreich auf GitHub gespeichert!");
+    } else {
+      console.error("Fehler beim Speichern des Brains:", result);
+    }
+  } catch (error) {
+    console.error("Fehler bei saveBrainToGitHub:", error);
+  }
 }
+
+// ==========================================
+// 2. SPRACHAUSGABE (TEXT-TO-SPEECH)
+// ==========================================
+function speakText(text, onComplete) {
+  if (!("speechSynthesis" in window)) {
+    console.warn("SpeechSynthesis wird von diesem Browser nicht unterstützt.");
+    if (onComplete) onComplete();
+    return;
+  }
+
+  window.speechSynthesis.cancel(); // Laufende Sprachausgaben abbrechen
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "de-DE";
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+
+  isSpeaking = true;
+  if (statusText) statusText.innerText = "Spricht...";
+
+  utterance.onend = () => {
+    isSpeaking = false;
+    if (onComplete) onComplete();
+  };
+
+  utterance.onerror = (err) => {
+    console.error("Fehler bei der Sprachausgabe:", err);
+    isSpeaking = false;
+    if (onComplete) onComplete();
+  };
+
+  window.speechSynthesis.speak(utterance);
+}
+
+// ==========================================
+// 3. SPRACHERKENNUNG (SPEECH-TO-TEXT)
+// ==========================================
+function initSpeechRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    alert("Dein Browser unterstützt keine Sprachsteuerung. Bitte verwende Chrome oder Safari.");
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = "de-DE";
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onstart = () => {
+    isListening = true;
+    if (statusText) statusText.innerText = "Hört zu...";
+  };
+
+  recognition.onresult = async (event) => {
+    const transcript = event.results[0][0].transcript;
+    console.log("Erkannt:", transcript);
+
+    if (statusText) statusText.innerText = "Überlegt...";
+
+    // Verlauf & Brain aktualisieren
+    omniBrain.history.push({ role: "user", text: transcript, timestamp: new Date().toISOString() });
+    omniBrain.lastUpdated = new Date().toISOString();
+
+    // 1. Gemini fragen
+    const reply = await askGemini(transcript);
+
+    // 2. Antwort zum Brain hinzufügen & auf GitHub sichern
+    omniBrain.history.push({ role: "omni", text: reply, timestamp: new Date().toISOString() });
+    saveBrainToGitHub(omniBrain);
+
+    // 3. Antwort vorlesen und erst DANACH wieder zuhören
+    speakText(reply, () => {
+      startListening();
+    });
+  };
+
+  recognition.onerror = (event) => {
+    console.error("Spracherkennungsfehler:", event.error);
+    isListening = false;
+    
+    // Bei Stille (no-speech) oder Abbruch automatisch neu starten
+    if (event.error === "no-speech" || event.error === "network") {
+      setTimeout(() => startListening(), 1000);
+    } else {
+      if (statusText) statusText.innerText = "Bereit";
+    }
+  };
+
+  recognition.onend = () => {
+    isListening = false;
+    // Nur neu starten, wenn Omni nicht gerade spricht
+    if (!isSpeaking && statusText && statusText.innerText === "Hört zu...") {
+      startListening();
+    }
+  };
+}
+
+function startListening() {
+  if (recognition && !isListening && !isSpeaking) {
+    try {
+      recognition.start();
+    } catch (e) {
+      console.warn("Erkennung lief bereits:", e);
+    }
+  }
+}
+
+// ==========================================
+// 4. INITIALISIERUNG
+// ==========================================
+document.addEventListener("DOMContentLoaded", () => {
+  initSpeechRecognition();
+
+  if (startBtn) {
+    startBtn.addEventListener("click", () => {
+      startListening();
+    });
+  }
+});
