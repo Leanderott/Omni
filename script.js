@@ -1,58 +1,189 @@
-// --- DOM-ELEMENTE ---
+// --- CONFIGURATION ---
+const CLOUDFLARE_WORKER_URL = "https://omnireadwrite.leanderotternberg.workers.dev";
+
+// --- CENTRAL BRAIN OBJECT ---
+let omniBrain = {
+    "Schule_und_Abschlüsse": {
+        "ZAP_Sekundarstufe_I": "Zentrale Prüfungen Klasse 10 in Mathematik, Deutsch und Englisch.",
+        "Abitur_Oberstufe": "Vorbereitung Sekundarstufe II. Leistungskurse & Grundkurse.",
+        "Physik": "Klassische Mechanik, Elektrodynamik, Optik, Quantenphysik.",
+        "Spanisch": "Grammatik, Vokabeln, Indirekte Objektpronomen, Mündliche Prüfungen.",
+        "Französisch": "Pronomen 'y' und 'en', Hörverstehen, Textanalyse, Präsentationen."
+    },
+    "Systeme_und_Hardware": {
+        "PC_Setup": "Dell OptiPlex 5040 Tower, Intel Core i5-6500, 16 GB RAM, GTX 1050 Ti, SSD.",
+        "Single_Board_Computer": "Raspberry Pi 1 Model B, Pi 2, Pi 3 B+, Raspberry Pi Pico, ESP32, ESP8266.",
+        "System_Monitoring": "Rainmeter (Glass-Design), HWiNFO64, AIDA64, Wallpaper Engine, Razer Synapse.",
+        "Netzwerk_und_Security": "Nmap Scanning, Cloudflare DNS-over-HTTPS, Swisscows, Pentesting-Basics."
+    },
+    "Entwicklung_und_Projekte": {
+        "Roblox_Studio": "Luau Scripting, UserInputService, ProximityPrompts, GUI-Entwicklung.",
+        "OFFCHAT": "LoRa ESP32-S3 Terminal, Off-Grid P2P Textübertragung, Solar, AES-256.",
+        "Drohne_Omni": "ArduPilot / Betaflight, MAVLink, Raspberry Pi 5 Edge-KI / Cloud-Anbindung.",
+        "Web_Development": "HTML5, CSS3 (Glassmorphism), JavaScript, Dark Mode, Multilingual Support."
+    },
+    "Protokolle_und_Notizen": {}
+};
+
+// --- AUTOMATISCHES GITHUB-UPDATE ÜBER CLOUDFLARE ---
+async function saveToGitHub() {
+    try {
+        const response = await fetch(CLOUDFLARE_WORKER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                action: "saveToGitHub",
+                brainData: omniBrain
+            })
+        });
+        const resData = await response.json();
+        if (resData.success) {
+            console.log("Omni Brain erfolgreich auf GitHub aktualisiert!");
+        } else {
+            console.error("Fehler beim Speichern:", resData);
+        }
+    } catch (err) {
+        console.error("Fehler beim Auto-Save auf GitHub:", err);
+    }
+}
+
+// --- CATEGORY INDEX ---
+function getCategoriesSummary() {
+    let summary = [];
+    for (let cat in omniBrain) {
+        summary.push(`${cat}: [${Object.keys(omniBrain[cat]).join(", ")}]`);
+    }
+    return summary.join(" | ");
+}
+
+// --- DOM ELEMENTS ---
 const pupils = document.querySelectorAll('.pupil');
 const blob = document.getElementById('blob');
 const statusText = document.getElementById('status-text');
 const talkBtn = document.getElementById('talk-btn');
 
-// --- INTEGRATED LOCAL DICTIONARY ---
-const builtInDictionary = {
-    "zoo": "Ein Zoo ist ein Park, in dem Tiere gehalten werden.",
-    "hund": "Ein Hund ist ein Haustier und ein treuer Begleiter.",
-    "katze": "Eine Katze ist ein Haustier, das gut klettern kann.",
-    "computer": "Ein Computer ist ein elektronisches Gerät zur Datenverarbeitung.",
-    "wasser": "Wasser ist eine Flüssigkeit, die wir zum Leben brauchen.",
-    "sonne": "Die Sonne ist der Stern, der uns Licht und Wärme gibt."
-};
-
-// --- GEDÄCHTNIS LADEN (localStorage) ---
-let omniBrain = JSON.parse(localStorage.getItem('omni_memory')) || {};
-let waitingForDefinitionFor = null;
-
-function saveMemory() {
-    localStorage.setItem('omni_memory', JSON.stringify(omniBrain));
-}
-
-// --- PUPILLEN-STEUERUNG ---
+// --- PUPILLEN STEUERUNG ---
 window.addEventListener('mousemove', (e) => movePupils(e.clientX, e.clientY));
+window.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 0) movePupils(e.touches[0].clientX, e.touches[0].clientY);
+});
+
 function movePupils(mouseX, mouseY) {
+    if (!pupils.length) return;
     pupils.forEach(pupil => {
         const eye = pupil.parentElement;
         const rect = eye.getBoundingClientRect();
         const eyeX = rect.left + rect.width / 2;
         const eyeY = rect.top + rect.height / 2;
+        
         const angle = Math.atan2(mouseY - eyeY, mouseX - eyeX);
         const distance = Math.min(6, Math.hypot(mouseX - eyeX, mouseY - eyeY) / 15);
+        
         pupil.style.transform = `translate(${Math.cos(angle) * distance}px, ${Math.sin(angle) * distance}px)`;
     });
 }
 
-// --- SPRACHAUSGABE ---
+let conversationHistory = [];
+
+// --- GEMINI API CALL ÜBER WORKER ---
+async function askGemini(userText) {
+    const kbOverview = getCategoriesSummary();
+    const fullKbData = JSON.stringify(omniBrain);
+
+    conversationHistory.push({ role: "user", parts: [{ text: userText }] });
+
+    const systemInstruction = `
+        Du bist Omni, eine direkte, extrem schlaue KI-Assistentin.
+        
+        DEIN OBERKATEGORIEN-INDEX (Schnellübersicht):
+        ${kbOverview}
+
+        DEINE DETAIL-DATENBANK:
+        ${fullKbData}
+
+        VERHALTENSREGELN:
+        - Antworte immer extrem präzise in 1 bis 2 kurzen Sätzen.
+        - Greife auf das Wissen über ZAP, Abitur, Hardware oder Projekte nur zu, wenn danach gefragt wird.
+        - Wenn der Nutzer ein Protokoll oder eine Notiz fordert, erstelle sie und füge am ENDE deiner Antwort folgendes JSON-Kommando an:
+          [[SAVE: {"kategorie": "Protokolle_und_Notizen", "thema": "Thema_Oder_Datum", "inhalt": "Kurzes Protokoll..."}]]
+    `;
+
+    const requestBody = {
+        contents: conversationHistory,
+        systemInstruction: { parts: [{ text: systemInstruction }] }
+    };
+
+    try {
+        const response = await fetch(CLOUDFLARE_WORKER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                action: "askGemini",
+                payload: requestBody
+            })
+        });
+
+        if (!response.ok) throw new Error(`Server Fehler: ${response.status}`);
+
+        const data = await response.json();
+        let rawReply = data.candidates[0].content.parts[0].text.trim();
+
+        // Prüfe auf Speicher-Befehl
+        const saveMatch = rawReply.match(/\[\[SAVE:\s*(\{.*?\})\s*\]\]/s);
+        if (saveMatch) {
+            try {
+                const saveData = JSON.parse(saveMatch[1]);
+                if (!omniBrain[saveData.kategorie]) {
+                    omniBrain[saveData.kategorie] = {};
+                }
+                omniBrain[saveData.kategorie][saveData.thema] = saveData.inhalt;
+                console.log("Neues Protokoll erfasst. Sende an GitHub...");
+                
+                saveToGitHub();
+
+                rawReply = rawReply.replace(/\[\[SAVE:.*?\]\]/s, "").trim();
+            } catch (e) {
+                console.error("Fehler beim Parsen des Protokolls:", e);
+            }
+        }
+
+        conversationHistory.push({ role: "model", parts: [{ text: rawReply }] });
+        
+        if (conversationHistory.length > 20) {
+            conversationHistory = conversationHistory.slice(-20);
+        }
+
+        return rawReply;
+
+    } catch (error) {
+        console.error("Gemini Fehler:", error);
+        return "Verbindung zum Server fehlgeschlagen.";
+    }
+}
+
+// --- TTS & STT LOGIK ---
 function speakOmni(text) {
-    statusText.innerText = "Omni: " + text;
+    if (statusText) statusText.innerText = "Omni: " + text;
     if (!('speechSynthesis' in window)) return;
 
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'de-DE';
-    utterance.rate = 0.95;
+    utterance.rate = 1.0;
 
-    utterance.onend = () => startContinuousListening();
-    utterance.onerror = () => startContinuousListening();
+    if (blob) utterance.onstart = () => blob.classList.add('speaking');
+    
+    const cleanup = () => {
+        if (blob) blob.classList.remove('speaking');
+        startContinuousListening();
+    };
+
+    utterance.onend = cleanup;
+    utterance.onerror = cleanup;
 
     window.speechSynthesis.speak(utterance);
 }
 
-// --- SPRACHERKENNUNG ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let isListening = false;
@@ -62,83 +193,41 @@ if (SpeechRecognition) {
     recognition.lang = 'de-DE';
     recognition.interimResults = false;
 
-    recognition.onstart = () => { isListening = true; talkBtn.innerText = "Höre zu..."; };
-    recognition.onresult = (e) => processUserInput(e.results[0][0].transcript);
-    recognition.onerror = () => { isListening = false; talkBtn.innerText = "Aufwachen"; };
+    recognition.onstart = () => {
+        isListening = true;
+        if (statusText) statusText.innerText = "Omni hört zu...";
+        if (talkBtn) talkBtn.innerText = "Höre zu...";
+    };
+
+    recognition.onresult = async (event) => {
+        const userText = event.results[0][0].transcript;
+        if (statusText) statusText.innerText = `Du: "${userText}"`;
+        
+        if (statusText) statusText.innerText = "Omni überlegt...";
+        const aiReply = await askGemini(userText);
+        speakOmni(aiReply);
+    };
+
+    recognition.onerror = () => { 
+        isListening = false; 
+        if (talkBtn) talkBtn.innerText = "Aufwachen";
+    };
+    
     recognition.onend = () => {
         isListening = false;
-        talkBtn.innerText = "Aufwachen";
-        if (!window.speechSynthesis.speaking) startContinuousListening();
+        if (talkBtn) talkBtn.innerText = "Aufwachen";
+        if (blob && !blob.classList.contains('speaking')) startContinuousListening();
     };
+} else {
+    if (statusText) statusText.innerText = "❌ Spracherkennung wird nicht unterstützt.";
 }
 
 function startContinuousListening() {
-    if (recognition && !isListening && !window.speechSynthesis.speaking) {
+    if (recognition && !isListening && blob && !blob.classList.contains('speaking')) {
         try { recognition.start(); } catch (e) {}
     }
 }
 
-talkBtn.addEventListener('click', () => startContinuousListening());
-
-// --- LOGIK OHNE QUIETSCH-FALLES ---
-function processUserInput(text) {
-    const rawInput = text.trim();
-    const input = rawInput.toLowerCase();
-
-    // 1. LERN-MODUS (Definition speichern)
-    if (waitingForDefinitionFor) {
-        const cleanKey = waitingForDefinitionFor.toLowerCase().trim();
-        omniBrain[cleanKey] = rawInput;
-        saveMemory();
-        
-        const learned = waitingForDefinitionFor;
-        waitingForDefinitionFor = null;
-        speakOmni(`Gemerkt! Ich weiß jetzt, was '${learned}' bedeutet.`);
-        return;
-    }
-
-    // 2. LERN-BEFEHL ERKENNEN
-    if (input.startsWith("lerne") || input.startsWith("bring mir bei")) {
-        waitingForDefinitionFor = input.replace("lerne", "").replace("bring mir bei", "").trim();
-        speakOmni(`Alles klar. Was bedeutet '${waitingForDefinitionFor}'?`);
-        return;
-    }
-
-    // 3. FRAGE REINIGEN (Satzbausteine entfernen)
-    let searchWord = input;
-    const prefixes = [
-        "was bedeutet ein", "was bedeutet eine", "was bedeutet", 
-        "was ist ein", "was ist eine", "was ist", "erkläre mir", "erkläre", "wer ist"
-    ];
-
-    for (let p of prefixes) {
-        if (searchWord.startsWith(p)) {
-            searchWord = searchWord.replace(p, "").trim();
-            break;
-        }
-    }
-
-    if (searchWord.endsWith("bedeutet")) {
-        searchWord = searchWord.replace("bedeutet", "").trim();
-    }
-
-    searchWord = searchWord.replace(/[^\w\säöüß]/gi, '').trim();
-
-    // 4. STOPP-WÖRTER BLOCKIEREN (Keine Suchen nach Einzelwörtern wie "was")
-    const blockedWords = ["was", "ist", "ein", "eine", "das", "der", "die", "wie", "du", "bedeutet", ""];
-    if (blockedWords.includes(searchWord)) {
-        speakOmni("Sag mir ein bestimmtes Wort. Zum Beispiel: Was ist ein Hund?");
-        return;
-    }
-
-    // 5. IM LOKALEN WISSEN SUCHEN
-    const allKnowledge = Object.assign({}, builtInDictionary, omniBrain);
-
-    if (allKnowledge[searchWord]) {
-        speakOmni(allKnowledge[searchWord]);
-        return;
-    }
-
-    // 6. FALLBACK (Keine fehlerhafte Internet-Suche mehr)
-    speakOmni(`Das weiß ich noch nicht. Sag 'Lerne ${searchWord}', um es mir zu erklären.`);
+if (talkBtn) {
+    talkBtn.addEventListener('click', () => startContinuousListening());
 }
